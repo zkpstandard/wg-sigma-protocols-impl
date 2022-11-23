@@ -7,9 +7,11 @@ use crate::{Challenge, SigmaError, SigmaProtocol, LABEL_LENGTH};
 
 /// Schnorr proof of knowledge of the discrete logarithm.
 pub struct SchnorrDLOG<G: ProjectiveCurve> {
-    pub instance: SchnorrInstance<G>,
+    instance: SchnorrInstance<G>,
 }
 
+/// The instance for the DLOG proof. It is composed of two group elements:
+/// the prover claims to know the discrete log between the `base` point and the `claim` point
 #[derive(Debug, Clone, Copy)]
 pub struct SchnorrInstance<G: ProjectiveCurve> {
     base: G,
@@ -17,6 +19,7 @@ pub struct SchnorrInstance<G: ProjectiveCurve> {
 }
 
 impl<G: ProjectiveCurve> SchnorrInstance<G> {
+    /// Create a new DLOG instance from the provided group elements
     pub fn new(base: G, claim: G) -> Self {
         Self { base, claim }
     }
@@ -34,7 +37,8 @@ impl<G: ProjectiveCurve> SigmaProtocol for SchnorrDLOG<G> {
     type Witness = G::ScalarField;
     type Response = G::ScalarField;
 
-    // TODO: Fix this according to the spec
+    // TODO: Fix this according to the spec. Need to decide whether hashing is decided at the interactive stage or later at NIZK
+    // Same hash function as for challenge? Domain separation?
     fn label(&self) -> [u8; LABEL_LENGTH] {
         [0; LABEL_LENGTH]
     }
@@ -50,7 +54,9 @@ impl<G: ProjectiveCurve> SigmaProtocol for SchnorrDLOG<G> {
         witness: &Self::Witness,
         rng: &mut R,
     ) -> (Self::Commitment, Self::ProverState) {
-        let random_value = G::ScalarField::rand(rng); // TODO change this with the seeding from standard
+        // TODO change this with the seeding from standard. Same hash function as for challenge? Domain separation?
+        let random_value = G::ScalarField::rand(rng);
+
         let commitment = self.instance.base.mul(random_value.into_repr());
 
         let state = ProverState {
@@ -67,7 +73,7 @@ impl<G: ProjectiveCurve> SigmaProtocol for SchnorrDLOG<G> {
         challenge: &Challenge,
     ) -> Self::Response {
         let challenge_scalar =
-            G::ScalarField::from_random_bytes(challenge).expect("Could not compute a challenge"); // TODO: error handling
+            G::ScalarField::from_random_bytes(challenge).expect("Could not compute a challenge"); // TODO: error handling. How do we deterministically get a challenge?
 
         prover_state.random_value - challenge_scalar * prover_state.witness
     }
@@ -103,9 +109,8 @@ impl<G: ProjectiveCurve> SigmaProtocol for SchnorrDLOG<G> {
         let challenge_scalar =
             G::ScalarField::from_random_bytes(challenge).expect("Could not compute a challenge"); // TODO: error handling
 
-        
-
-        self.instance.base.mul(response.into_repr()) + self.instance.claim.mul(challenge_scalar.into_repr())
+        self.instance.base.mul(response.into_repr())
+            + self.instance.claim.mul(challenge_scalar.into_repr())
     }
 }
 
@@ -141,9 +146,7 @@ mod tests {
 
         let batchable_proof = nizk.batchable_proof(&witness, None, rng);
 
-        assert!(nizk
-            .batchable_verify(&batchable_proof, None)
-            .is_ok());
+        assert!(nizk.batchable_verify(&batchable_proof, None).is_ok());
 
         let wrong_witness = F::rand(rng);
         let bad_proof = nizk.batchable_proof(&wrong_witness, None, rng);
@@ -169,8 +172,6 @@ mod tests {
 
         let short_proof = nizk.short_proof(&witness, None, rng);
 
-        assert!(nizk
-            .short_verify(&short_proof, None)
-            .is_ok())
+        assert!(nizk.short_verify(&short_proof, None).is_ok())
     }
 }

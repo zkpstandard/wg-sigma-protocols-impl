@@ -139,9 +139,9 @@ impl<S: SigmaProtocol, D: Digest> NIZK<S, D> {
         proof: &ShortProof<S>,
         message: Option<&[u8]>,
     ) -> Result<(), SigmaError> {
-        let commitment =
-            self.interactive_protocol
-                .simulate_commitment(&proof.challenge, &proof.response);
+        let commitment = self
+            .interactive_protocol
+            .simulate_commitment(&proof.challenge, &proof.response);
         let challenge = self.challenge(message, &commitment);
 
         if challenge == proof.challenge {
