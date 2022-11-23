@@ -1,13 +1,13 @@
-use std::hash::Hasher;
-
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, Read, SerializationError, Write};
+use digest::Digest;
+use rand::Rng;
 
 use crate::{Challenge, SigmaError, SigmaProtocol, CHALLENGE_LENGTH, DOMSEP, LABEL_LENGTH};
 
 /// A non-interactive zk (NIZK) proof derived from applying the Fiat-Shamir transformation to a Sigma protocol
-pub struct NIZK<S: SigmaProtocol, H: Hasher> {
+pub struct NIZK<S: SigmaProtocol, D: Digest> {
     interactive_protocol: S,
-    hasher: H,
+    hasher: D,
     hd: [u8; LABEL_LENGTH],
     ha: [u8; LABEL_LENGTH],
     hctx: [u8; LABEL_LENGTH],
@@ -27,20 +27,20 @@ pub struct ShortProof<S: SigmaProtocol> {
     response: S::Response,
 }
 
-impl<S: SigmaProtocol, H: Hasher> NIZK<S, H> {
+impl<S: SigmaProtocol, D: Digest> NIZK<S, D> {
     /// initialise the NIZK for a given Sigma protocol.
-    pub fn new(protocol: S, mut hasher: H, ctx: &[u8]) -> Self {
-        hasher.write(DOMSEP);
-        let hd_long = hasher.finish().to_le_bytes();
+    pub fn new(protocol: S, mut hasher: D, ctx: &[u8]) -> Self {
+        hasher.update(DOMSEP);
+        let hd_long = hasher.finalize_reset();
         let mut hd = [0u8; LABEL_LENGTH];
-        hd.copy_from_slice(&hd_long[hd_long.len() - LABEL_LENGTH..]);
+        hd.copy_from_slice(&hd_long[..LABEL_LENGTH]); // TODO use last 32 bytes instead
 
         let ha = protocol.label();
 
-        hasher.write(ctx);
-        let hctx_long = hasher.finish().to_le_bytes();
+        hasher.update(ctx);
+        let hctx_long = hasher.finalize_reset();
         let mut hctx = [0u8; LABEL_LENGTH];
-        hctx.copy_from_slice(&hctx_long[hctx_long.len() - LABEL_LENGTH..]);
+        hctx.copy_from_slice(&hctx_long[..LABEL_LENGTH]);
 
         Self {
             interactive_protocol: protocol,
@@ -59,38 +59,39 @@ impl<S: SigmaProtocol, H: Hasher> NIZK<S, H> {
 
         let hashed = match message {
             Some(msg) => {
-                self.hasher.write(msg);
-                let hm_long = self.hasher.finish().to_be_bytes();
-                let hm = &hm_long[hm_long.len() - LABEL_LENGTH..];
+                self.hasher.update(msg);
+                let hm_long = self.hasher.finalize_reset();
+                let hm = &hm_long[..LABEL_LENGTH];
 
-                self.hasher.write(&self.hd);
-                self.hasher.write(&self.hctx);
-                self.hasher.write(&self.ha);
-                self.hasher.write(hm);
-                self.hasher.write(&commitment_bytes);
-                self.hasher.finish().to_le_bytes()
+                self.hasher.update(&self.hd);
+                self.hasher.update(&self.hctx);
+                self.hasher.update(&self.ha);
+                self.hasher.update(hm);
+                self.hasher.update(&commitment_bytes);
+                self.hasher.finalize_reset()
             }
             None => {
-                self.hasher.write(&self.hd);
-                self.hasher.write(&self.hctx);
-                self.hasher.write(&self.ha);
-                self.hasher.write(&commitment_bytes);
-                self.hasher.finish().to_le_bytes()
+                self.hasher.update(&self.hd);
+                self.hasher.update(&self.hctx);
+                self.hasher.update(&self.ha);
+                self.hasher.update(&commitment_bytes);
+                self.hasher.finalize_reset()
             }
         };
 
-        challenge.copy_from_slice(&hashed[hashed.len() - CHALLENGE_LENGTH..]);
+        challenge.copy_from_slice(&hashed[..CHALLENGE_LENGTH]);
 
         challenge
     }
 
     /// Produce a batchable proof for the instance using the provided witness
-    pub fn batchable_proof(
+    pub fn batchable_proof<R: Rng>(
         &mut self,
         witness: &S::Witness,
         message: Option<&[u8]>,
+        rng: &mut R,
     ) -> BatchableProof<S> {
-        let (commitment, prover_state) = self.interactive_protocol.prover_commit(witness);
+        let (commitment, prover_state) = self.interactive_protocol.prover_commit(witness, rng);
         let challenge = self.challenge(message, &commitment);
         let response = self
             .interactive_protocol
@@ -114,8 +115,13 @@ impl<S: SigmaProtocol, H: Hasher> NIZK<S, H> {
     }
 
     /// Produce a short proof for the instance using the provided witness
-    pub fn short_proof(&mut self, witness: &S::Witness, message: Option<&[u8]>) -> ShortProof<S> {
-        let (commitment, prover_state) = self.interactive_protocol.prover_commit(witness);
+    pub fn short_proof<R: Rng>(
+        &mut self,
+        witness: &S::Witness,
+        message: Option<&[u8]>,
+        rng: &mut R,
+    ) -> ShortProof<S> {
+        let (commitment, prover_state) = self.interactive_protocol.prover_commit(witness, rng);
         let challenge = self.challenge(message, &commitment);
         let response = self
             .interactive_protocol
@@ -128,8 +134,14 @@ impl<S: SigmaProtocol, H: Hasher> NIZK<S, H> {
     }
 
     /// Verify a short proof
-    pub fn short_verify(&mut self, proof: &ShortProof<S>, message: Option<&[u8]>) -> Result<(), SigmaError> {
-        let commitment = self.interactive_protocol.simulate_commitment(&proof.challenge, &proof.response);
+    pub fn short_verify(
+        &mut self,
+        proof: &ShortProof<S>,
+        message: Option<&[u8]>,
+    ) -> Result<(), SigmaError> {
+        let commitment =
+            self.interactive_protocol
+                .simulate_commitment(&proof.challenge, &proof.response);
         let challenge = self.challenge(message, &commitment);
 
         if challenge == proof.challenge {

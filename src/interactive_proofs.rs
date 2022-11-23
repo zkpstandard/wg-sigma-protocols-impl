@@ -1,4 +1,5 @@
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
+use rand::Rng;
 
 use crate::{Challenge, SigmaError, LABEL_LENGTH};
 
@@ -15,7 +16,11 @@ pub trait SigmaProtocol {
 
     fn new(instance: &Self::Instance) -> Self;
 
-    fn prover_commit(&self, witness: &Self::Witness) -> (Self::Commitment, Self::ProverState);
+    fn prover_commit<R: Rng>(
+        &self,
+        witness: &Self::Witness,
+        rng: &mut R,
+    ) -> (Self::Commitment, Self::ProverState);
 
     fn prover_response(
         &self,
@@ -30,7 +35,7 @@ pub trait SigmaProtocol {
         response: &Self::Response,
     ) -> Result<(), SigmaError>;
 
-    fn simulate_response(&self) -> Self::Response;
+    fn simulate_response<R: Rng>(&self, rng: &mut R) -> Self::Response;
 
     fn simulate_commitment(
         &self,

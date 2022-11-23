@@ -26,6 +26,9 @@ pub use nizk_proofs::{BatchableProof, ShortProof, NIZK};
 mod hash_registry;
 pub use hash_registry::HashFunction;
 
+/// Concrete implementations of known Sigma protocols.
+pub mod protocols;
+
 // pub enum ComposedSigmaProtocol {
 //     ANDComposition,
 //     ORComposition,
@@ -36,6 +39,3 @@ pub enum SigmaError {
     /// An error to signify that verification has failed
     VerificationFailed,
 }
-
-#[cfg(test)]
-mod tests {}
