@@ -2,15 +2,15 @@ use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, Read, Serializatio
 use digest::Digest;
 use rand::Rng;
 
-use crate::{Challenge, SigmaError, SigmaProtocol, CHALLENGE_LENGTH, DOMSEP, LABEL_LENGTH};
+use crate::{Challenge, SigmaError, SigmaProtocol, CHALLENGE_LENGTH, DOMSEP};
 
 /// A non-interactive zk (NIZK) proof derived from applying the Fiat-Shamir transformation to a Sigma protocol
 pub struct NIZK<S: SigmaProtocol, D: Digest> {
     interactive_protocol: S,
     hasher: D,
-    hd: [u8; LABEL_LENGTH],
-    ha: [u8; LABEL_LENGTH],
-    hctx: [u8; LABEL_LENGTH],
+    hd: [u8; CHALLENGE_LENGTH],
+    ha: [u8; CHALLENGE_LENGTH],
+    hctx: [u8; CHALLENGE_LENGTH],
 }
 
 /// A batchable proof. The canonical form of proofs.
@@ -32,15 +32,15 @@ impl<S: SigmaProtocol, D: Digest> NIZK<S, D> {
     pub fn new(protocol: S, mut hasher: D, ctx: &[u8]) -> Self {
         hasher.update(DOMSEP);
         let hd_long = hasher.finalize_reset();
-        let mut hd = [0u8; LABEL_LENGTH];
-        hd.copy_from_slice(&hd_long[..LABEL_LENGTH]); // TODO use last 32 bytes instead
+        let mut hd = [0u8; CHALLENGE_LENGTH];
+        hd.copy_from_slice(&hd_long[..CHALLENGE_LENGTH]); // TODO use last 32 bytes instead
 
         let ha = protocol.label();
 
         hasher.update(ctx);
         let hctx_long = hasher.finalize_reset();
-        let mut hctx = [0u8; LABEL_LENGTH];
-        hctx.copy_from_slice(&hctx_long[..LABEL_LENGTH]);
+        let mut hctx = [0u8; CHALLENGE_LENGTH];
+        hctx.copy_from_slice(&hctx_long[..CHALLENGE_LENGTH]);
 
         Self {
             interactive_protocol: protocol,
@@ -61,7 +61,7 @@ impl<S: SigmaProtocol, D: Digest> NIZK<S, D> {
             Some(msg) => {
                 self.hasher.update(msg);
                 let hm_long = self.hasher.finalize_reset();
-                let hm = &hm_long[..LABEL_LENGTH];
+                let hm = &hm_long[..CHALLENGE_LENGTH];
 
                 self.hasher.update(&self.hd);
                 self.hasher.update(&self.hctx);
@@ -149,5 +149,49 @@ impl<S: SigmaProtocol, D: Digest> NIZK<S, D> {
         } else {
             return Err(SigmaError::VerificationFailed);
         }
+    }
+}
+
+#[cfg(test)]
+pub(crate) mod tests {
+    use digest::Digest;
+    use rand::Rng;
+
+    use crate::{SigmaError, SigmaProtocol, NIZK};
+
+    /// Generates a batched proof using the provided witness and instance and returns the verifier output
+    pub(crate) fn run_nizk_batched<D: Digest, S: SigmaProtocol, R: Rng>(
+        instance: &S::Instance,
+        witness: &S::Witness,
+        hasher: D,
+        rng: &mut R,
+    ) -> Result<(), SigmaError> {
+        let ctx = b"this is a test";
+        let message = b"this is a message";
+
+        let interactive_protocol = S::new(instance);
+        let mut nizk = NIZK::new(interactive_protocol, hasher, ctx);
+
+        let proof = nizk.batchable_proof(witness, Some(message), rng);
+
+        nizk.batchable_verify(&proof, Some(message))
+    }
+
+    /// Generates a batched proof using the provided witness and instance and returns the verifier output
+    pub(crate) fn run_nizk_short<D: Digest, S: SigmaProtocol, R: Rng>(
+        instance: &S::Instance,
+        witness: &S::Witness,
+        hasher: D,
+        rng: &mut R,
+    ) -> Result<(), SigmaError> {
+        let ctx = b"this is a test";
+        let message = b"this is a message";
+
+        let interactive_protocol = S::new(instance);
+        let mut nizk = NIZK::new(interactive_protocol, hasher, ctx);
+
+        let proof = nizk.short_proof(witness, Some(message), rng);
+
+        nizk.short_verify(&proof, Some(message))
     }
 }

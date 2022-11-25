@@ -3,7 +3,7 @@ use ark_ff::{Field, PrimeField};
 use ark_std::UniformRand;
 use rand::Rng;
 
-use crate::{Challenge, SigmaError, SigmaProtocol, LABEL_LENGTH};
+use crate::{Challenge, SigmaError, SigmaProtocol, CHALLENGE_LENGTH};
 
 /// Schnorr proof of knowledge of the discrete logarithm.
 pub struct SchnorrDLOG<G: ProjectiveCurve> {
@@ -39,8 +39,8 @@ impl<G: ProjectiveCurve> SigmaProtocol for SchnorrDLOG<G> {
 
     // TODO: Fix this according to the spec. Need to decide whether hashing is decided at the interactive stage or later at NIZK
     // Same hash function as for challenge? Domain separation?
-    fn label(&self) -> [u8; LABEL_LENGTH] {
-        [0; LABEL_LENGTH]
+    fn label(&self) -> [u8; CHALLENGE_LENGTH] {
+        [0; CHALLENGE_LENGTH]
     }
 
     fn new(instance: &SchnorrInstance<G>) -> Self {
@@ -119,59 +119,69 @@ mod tests {
     use ark_ec::ProjectiveCurve;
     use ark_ff::{PrimeField, UniformRand};
     use blake2::Digest;
-    use rand::thread_rng;
+    use rand::{thread_rng, Rng};
 
-    use crate::{SigmaProtocol, NIZK};
+    use crate::{nizk_proofs::tests::{run_nizk_batched, run_nizk_short}, SigmaError};
 
     use super::{SchnorrDLOG, SchnorrInstance};
 
     type G = ark_bls12_377::G1Projective;
     type F = ark_bls12_377::Fr;
 
-    #[test]
-    fn test_schnorr_nizk_batchable() {
-        let rng = &mut thread_rng();
-
-        let hasher = blake2::Blake2s::new();
-
+    fn schnorr_setup<R: Rng>(rng: &mut R) -> (SchnorrInstance<G>, F, F) {
+        // Produce witness and instance
         let generator = G::prime_subgroup_generator();
-
         let witness = F::rand(rng);
         let claim = generator.mul(witness.into_repr());
         let instance = SchnorrInstance::new(generator, claim);
-
-        let interactive_protocol = SchnorrDLOG::new(&instance);
-
-        let mut nizk = NIZK::new(interactive_protocol, hasher, &[]);
-
-        let batchable_proof = nizk.batchable_proof(&witness, None, rng);
-
-        assert!(nizk.batchable_verify(&batchable_proof, None).is_ok());
-
         let wrong_witness = F::rand(rng);
-        let bad_proof = nizk.batchable_proof(&wrong_witness, None, rng);
 
-        assert!(nizk.batchable_verify(&bad_proof, None).is_err())
+        (instance, witness, wrong_witness)
     }
 
     #[test]
-    fn test_schnorr_nizk_short() {
+    fn test_schnorr_accept_valid_batchable() {
         let rng = &mut thread_rng();
-
         let hasher = blake2::Blake2s::new();
 
-        let generator = G::prime_subgroup_generator();
+        let (instance, witness, _) = schnorr_setup(rng);
 
-        let witness = F::rand(rng);
-        let claim = generator.mul(witness.into_repr());
-        let instance = SchnorrInstance::new(generator, claim);
+        assert!(run_nizk_batched::<_, SchnorrDLOG<_>, _>(&instance, &witness, hasher, rng).is_ok())
+    }
 
-        let interactive_protocol = SchnorrDLOG::new(&instance);
+    #[test]
+    fn test_schnorr_reject_wrong_batchable() {
+        let rng = &mut thread_rng();
+        let hasher = blake2::Blake2s::new();
 
-        let mut nizk = NIZK::new(interactive_protocol, hasher, &[]);
+        let (instance, _, wrong_witness) = schnorr_setup(rng);
 
-        let short_proof = nizk.short_proof(&witness, None, rng);
+        assert_eq!(
+            run_nizk_batched::<_, SchnorrDLOG<_>, _>(&instance, &wrong_witness, hasher, rng),
+            Err(SigmaError::VerificationFailed)
+        )
+    }
 
-        assert!(nizk.short_verify(&short_proof, None).is_ok())
+    #[test]
+    fn test_schnorr_accept_valid_short() {
+        let rng = &mut thread_rng();
+        let hasher = blake2::Blake2s::new();
+
+        let (instance, witness, _) = schnorr_setup(rng);
+
+        assert!(run_nizk_short::<_, SchnorrDLOG<_>, _>(&instance, &witness, hasher, rng).is_ok())
+    }
+
+    #[test]
+    fn test_schnorr_reject_wrong_short() {
+        let rng = &mut thread_rng();
+        let hasher = blake2::Blake2s::new();
+
+        let (instance, _, wrong_witness) = schnorr_setup(rng);
+
+        assert_eq!(
+            run_nizk_short::<_, SchnorrDLOG<_>, _>(&instance, &wrong_witness, hasher, rng),
+            Err(SigmaError::VerificationFailed)
+        )
     }
 }

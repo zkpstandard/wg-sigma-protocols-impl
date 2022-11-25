@@ -4,9 +4,6 @@
 #![warn(missing_docs, unreachable_pub)]
 #![deny(unused_must_use, rust_2018_idioms)]
 
-/// Length of a label in bytes
-pub const LABEL_LENGTH: usize = 32;
-
 /// Length of a challenge in bytes
 pub const CHALLENGE_LENGTH: usize = 32;
 
@@ -34,6 +31,7 @@ pub mod protocols;
 //     ORComposition,
 // }
 
+#[derive(Debug, PartialEq, Eq)]
 /// An error type for failures in sigma protocols
 pub enum SigmaError {
     /// An error to signify that verification has failed

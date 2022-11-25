@@ -1,7 +1,7 @@
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use rand::Rng;
 
-use crate::{Challenge, SigmaError, LABEL_LENGTH};
+use crate::{Challenge, SigmaError, CHALLENGE_LENGTH};
 
 #[allow(missing_docs)]
 /// Interface for a Sigma protocol. **WARNING**: As explained in the standard, Sigma protocols are *not* to be used interactively
@@ -12,7 +12,7 @@ pub trait SigmaProtocol {
     type ProverState;
     type Response: CanonicalSerialize + CanonicalDeserialize;
 
-    fn label(&self) -> [u8; LABEL_LENGTH];
+    fn label(&self) -> [u8; CHALLENGE_LENGTH];
 
     fn new(instance: &Self::Instance) -> Self;
 
