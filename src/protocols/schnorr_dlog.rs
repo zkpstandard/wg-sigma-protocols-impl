@@ -25,6 +25,12 @@ impl<G: ProjectiveCurve> SchnorrInstance<G> {
     }
 }
 
+/// A wrapper type for a Schnorr witness
+pub type SchnorrWitness<G> = <G as ProjectiveCurve>::ScalarField;
+
+/// A wrapper type for a schnorr instance
+pub type SchnorrResponse<G> = <G as ProjectiveCurve>::ScalarField;
+
 pub struct ProverState<F: Field> {
     witness: F,
     random_value: F,
@@ -34,8 +40,8 @@ impl<G: ProjectiveCurve> SigmaProtocol for SchnorrDLOG<G> {
     type Instance = SchnorrInstance<G>;
     type Commitment = G;
     type ProverState = ProverState<G::ScalarField>;
-    type Witness = G::ScalarField;
-    type Response = G::ScalarField;
+    type Witness = SchnorrWitness<G>;
+    type Response = SchnorrResponse<G>;
 
     // TODO: Fix this according to the spec. Need to decide whether hashing is decided at the interactive stage or later at NIZK
     // Same hash function as for challenge? Domain separation?
@@ -118,7 +124,6 @@ impl<G: ProjectiveCurve> SigmaProtocol for SchnorrDLOG<G> {
 mod tests {
     use ark_ec::ProjectiveCurve;
     use ark_ff::{PrimeField, UniformRand};
-    use blake2::Digest;
     use rand::{thread_rng, Rng};
 
     use crate::{
@@ -128,6 +133,7 @@ mod tests {
 
     use super::{SchnorrDLOG, SchnorrInstance};
 
+    type Hash = blake2::Blake2s;
     type G = ark_bls12_377::G1Projective;
     type F = ark_bls12_377::Fr;
 
@@ -145,18 +151,15 @@ mod tests {
     #[test]
     fn test_schnorr_accept_valid_batchable() {
         let rng = &mut thread_rng();
-        let hasher = blake2::Blake2s::new();
         let mut challenge_failures = 0;
 
         let (instance, witness, _) = schnorr_setup(rng);
 
-        let mut test_result =
-            run_nizk_batched::<_, SchnorrDLOG<_>, _>(&instance, &witness, hasher.clone(), rng);
+        let mut test_result = run_nizk_batched::<Hash, SchnorrDLOG<_>, _>(&instance, &witness, rng);
 
         while test_result == Err(SigmaError::ChallengeConversionFailure) {
             challenge_failures += 1;
-            test_result =
-                run_nizk_batched::<_, SchnorrDLOG<_>, _>(&instance, &witness, hasher.clone(), rng)
+            test_result = run_nizk_batched::<Hash, SchnorrDLOG<_>, _>(&instance, &witness, rng)
         }
 
         println!("Parsing the challenge failed {} times", challenge_failures);
@@ -166,26 +169,17 @@ mod tests {
     #[test]
     fn test_schnorr_reject_wrong_batchable() {
         let rng = &mut thread_rng();
-        let hasher = blake2::Blake2s::new();
         let mut challenge_failures = 0;
 
         let (instance, _, wrong_witness) = schnorr_setup(rng);
 
-        let mut test_result = run_nizk_batched::<_, SchnorrDLOG<_>, _>(
-            &instance,
-            &wrong_witness,
-            hasher.clone(),
-            rng,
-        );
+        let mut test_result =
+            run_nizk_batched::<Hash, SchnorrDLOG<_>, _>(&instance, &wrong_witness, rng);
 
         while test_result == Err(SigmaError::ChallengeConversionFailure) {
             challenge_failures += 1;
-            test_result = run_nizk_batched::<_, SchnorrDLOG<_>, _>(
-                &instance,
-                &wrong_witness,
-                hasher.clone(),
-                rng,
-            )
+            test_result =
+                run_nizk_batched::<Hash, SchnorrDLOG<_>, _>(&instance, &wrong_witness, rng)
         }
 
         println!("Parsing the challenge failed {} times", challenge_failures);
@@ -196,18 +190,15 @@ mod tests {
     #[test]
     fn test_schnorr_accept_valid_short() {
         let rng = &mut thread_rng();
-        let hasher = blake2::Blake2s::new();
         let mut challenge_failures = 0;
 
         let (instance, witness, _) = schnorr_setup(rng);
 
-        let mut test_result =
-            run_nizk_short::<_, SchnorrDLOG<_>, _>(&instance, &witness, hasher.clone(), rng);
+        let mut test_result = run_nizk_short::<Hash, SchnorrDLOG<_>, _>(&instance, &witness, rng);
 
         while test_result == Err(SigmaError::ChallengeConversionFailure) {
             challenge_failures += 1;
-            test_result =
-                run_nizk_short::<_, SchnorrDLOG<_>, _>(&instance, &witness, hasher.clone(), rng)
+            test_result = run_nizk_short::<Hash, SchnorrDLOG<_>, _>(&instance, &witness, rng)
         }
 
         println!("Parsing the challenge failed {} times", challenge_failures);
@@ -217,22 +208,16 @@ mod tests {
     #[test]
     fn test_schnorr_reject_wrong_short() {
         let rng = &mut thread_rng();
-        let hasher = blake2::Blake2s::new();
         let mut challenge_failures = 0;
 
         let (instance, _, wrong_witness) = schnorr_setup(rng);
 
         let mut test_result =
-            run_nizk_short::<_, SchnorrDLOG<_>, _>(&instance, &wrong_witness, hasher.clone(), rng);
+            run_nizk_short::<Hash, SchnorrDLOG<_>, _>(&instance, &wrong_witness, rng);
 
         while test_result == Err(SigmaError::ChallengeConversionFailure) {
             challenge_failures += 1;
-            test_result = run_nizk_short::<_, SchnorrDLOG<_>, _>(
-                &instance,
-                &wrong_witness,
-                hasher.clone(),
-                rng,
-            )
+            test_result = run_nizk_short::<Hash, SchnorrDLOG<_>, _>(&instance, &wrong_witness, rng)
         }
 
         println!("Parsing the challenge failed {} times", challenge_failures);
