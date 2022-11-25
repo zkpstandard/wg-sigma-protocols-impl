@@ -29,7 +29,10 @@ pub struct ShortProof<S: SigmaProtocol> {
 
 impl<S: SigmaProtocol, D: Digest> NIZK<S, D> {
     /// initialise the NIZK for a given Sigma protocol.
-    pub fn new(protocol: S, mut hasher: D, ctx: &[u8]) -> Self {
+    pub fn new(instance: &S::Instance, ctx: &[u8]) -> Self {
+        let protocol = S::new(instance);
+        let mut hasher = D::new();
+
         hasher.update(DOMSEP);
         let hd_long = hasher.finalize_reset();
         let mut hd = [0u8; CHALLENGE_LENGTH];
@@ -163,14 +166,12 @@ pub(crate) mod tests {
     pub(crate) fn run_nizk_batched<D: Digest, S: SigmaProtocol, R: Rng>(
         instance: &S::Instance,
         witness: &S::Witness,
-        hasher: D,
         rng: &mut R,
     ) -> Result<(), SigmaError> {
         let ctx = b"this is a test";
         let message = b"this is a message";
 
-        let interactive_protocol = S::new(instance);
-        let mut nizk = NIZK::new(interactive_protocol, hasher, ctx);
+        let mut nizk = NIZK::<S, D>::new(instance, ctx);
 
         let proof = nizk.batchable_proof(witness, Some(message), rng)?;
 
@@ -181,14 +182,12 @@ pub(crate) mod tests {
     pub(crate) fn run_nizk_short<D: Digest, S: SigmaProtocol, R: Rng>(
         instance: &S::Instance,
         witness: &S::Witness,
-        hasher: D,
         rng: &mut R,
     ) -> Result<(), SigmaError> {
         let ctx = b"this is a test";
         let message = b"this is a message";
 
-        let interactive_protocol = S::new(instance);
-        let mut nizk = NIZK::new(interactive_protocol, hasher, ctx);
+        let mut nizk = NIZK::<S, D>::new(instance, ctx);
 
         let proof = nizk.short_proof(witness, Some(message), rng)?;
 
