@@ -27,14 +27,14 @@ fn main() {
 
     let instance = SchnorrInstance::new(generator, claim);
 
-    let mut nizk: NIZK<SchnorrDLOG<_>, Hash> = NIZK::new(&instance, &ctx);
+    let mut schnorr: NIZK<SchnorrDLOG<_>, Hash> = NIZK::new(&instance, &ctx);
 
-    let proof = nizk.batchable_proof(&witness, None, &mut rng).unwrap();
+    let proof = schnorr.batchable_proof(&witness, None, &mut rng).unwrap();
 
     // VERIFIER ----------------------------------------------------------------
-    let mut nizk: NIZK<SchnorrDLOG<_>, Hash> = NIZK::new(&instance, &ctx);
+    let mut schnorr: NIZK<SchnorrDLOG<_>, Hash> = NIZK::new(&instance, &ctx);
 
-    match nizk.batchable_verify(&proof, None) {
+    match schnorr.batchable_verify(&proof, None) {
         Ok(_) => println!("Proof is valid."),
         Err(_) => println!("Proof is not valid."),
     }
