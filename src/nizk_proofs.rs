@@ -90,17 +90,17 @@ impl<S: SigmaProtocol, D: Digest> NIZK<S, D> {
         witness: &S::Witness,
         message: Option<&[u8]>,
         rng: &mut R,
-    ) -> BatchableProof<S> {
+    ) -> Result<BatchableProof<S>, SigmaError> {
         let (commitment, prover_state) = self.interactive_protocol.prover_commit(witness, rng);
         let challenge = self.challenge(message, &commitment);
         let response = self
             .interactive_protocol
-            .prover_response(&prover_state, &challenge);
+            .prover_response(&prover_state, &challenge)?;
 
-        BatchableProof {
+        Ok(BatchableProof {
             commitment,
             response,
-        }
+        })
     }
 
     /// Verify a batchable proof
@@ -120,17 +120,17 @@ impl<S: SigmaProtocol, D: Digest> NIZK<S, D> {
         witness: &S::Witness,
         message: Option<&[u8]>,
         rng: &mut R,
-    ) -> ShortProof<S> {
+    ) -> Result<ShortProof<S>, SigmaError> {
         let (commitment, prover_state) = self.interactive_protocol.prover_commit(witness, rng);
         let challenge = self.challenge(message, &commitment);
         let response = self
             .interactive_protocol
-            .prover_response(&prover_state, &challenge);
+            .prover_response(&prover_state, &challenge)?;
 
-        ShortProof {
+        Ok(ShortProof {
             challenge,
             response,
-        }
+        })
     }
 
     /// Verify a short proof
@@ -141,7 +141,7 @@ impl<S: SigmaProtocol, D: Digest> NIZK<S, D> {
     ) -> Result<(), SigmaError> {
         let commitment = self
             .interactive_protocol
-            .simulate_commitment(&proof.challenge, &proof.response);
+            .simulate_commitment(&proof.challenge, &proof.response)?;
         let challenge = self.challenge(message, &commitment);
 
         if challenge == proof.challenge {
@@ -172,7 +172,7 @@ pub(crate) mod tests {
         let interactive_protocol = S::new(instance);
         let mut nizk = NIZK::new(interactive_protocol, hasher, ctx);
 
-        let proof = nizk.batchable_proof(witness, Some(message), rng);
+        let proof = nizk.batchable_proof(witness, Some(message), rng)?;
 
         nizk.batchable_verify(&proof, Some(message))
     }
@@ -190,7 +190,7 @@ pub(crate) mod tests {
         let interactive_protocol = S::new(instance);
         let mut nizk = NIZK::new(interactive_protocol, hasher, ctx);
 
-        let proof = nizk.short_proof(witness, Some(message), rng);
+        let proof = nizk.short_proof(witness, Some(message), rng)?;
 
         nizk.short_verify(&proof, Some(message))
     }

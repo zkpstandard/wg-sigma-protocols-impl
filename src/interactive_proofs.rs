@@ -26,7 +26,7 @@ pub trait SigmaProtocol {
         &self,
         prover_state: &Self::ProverState,
         challenge: &Challenge,
-    ) -> Self::Response;
+    ) -> Result<Self::Response, SigmaError>;
 
     fn verifier(
         &self,
@@ -41,5 +41,5 @@ pub trait SigmaProtocol {
         &self,
         challenge: &Challenge,
         response: &Self::Response,
-    ) -> Self::Commitment;
+    ) -> Result<Self::Commitment, SigmaError>;
 }

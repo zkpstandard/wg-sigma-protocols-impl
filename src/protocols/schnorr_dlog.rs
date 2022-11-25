@@ -71,11 +71,11 @@ impl<G: ProjectiveCurve> SigmaProtocol for SchnorrDLOG<G> {
         &self,
         prover_state: &Self::ProverState,
         challenge: &Challenge,
-    ) -> Self::Response {
-        let challenge_scalar =
-            G::ScalarField::from_random_bytes(challenge).expect("Could not compute a challenge"); // TODO: error handling. How do we deterministically get a challenge?
+    ) -> Result<Self::Response, SigmaError> {
+        let challenge_scalar = G::ScalarField::from_random_bytes(challenge)
+            .ok_or(SigmaError::ChallengeConversionFailure)?;
 
-        prover_state.random_value - challenge_scalar * prover_state.witness
+        Ok(prover_state.random_value - challenge_scalar * prover_state.witness)
     }
 
     fn verifier(
@@ -84,8 +84,8 @@ impl<G: ProjectiveCurve> SigmaProtocol for SchnorrDLOG<G> {
         challenge: &Challenge,
         response: &Self::Response,
     ) -> Result<(), crate::SigmaError> {
-        let challenge_scalar =
-            G::ScalarField::from_random_bytes(challenge).expect("Could not compute a challenge"); // TODO: error handling
+        let challenge_scalar = G::ScalarField::from_random_bytes(challenge)
+            .ok_or(SigmaError::ChallengeConversionFailure)?;
 
         if &(self.instance.base.mul(response.into_repr())
             + self.instance.claim.mul(challenge_scalar.into_repr()))
@@ -105,12 +105,12 @@ impl<G: ProjectiveCurve> SigmaProtocol for SchnorrDLOG<G> {
         &self,
         challenge: &Challenge,
         response: &Self::Response,
-    ) -> Self::Commitment {
-        let challenge_scalar =
-            G::ScalarField::from_random_bytes(challenge).expect("Could not compute a challenge"); // TODO: error handling
+    ) -> Result<Self::Commitment, SigmaError> {
+        let challenge_scalar = G::ScalarField::from_random_bytes(challenge)
+            .ok_or(SigmaError::ChallengeConversionFailure)?;
 
-        self.instance.base.mul(response.into_repr())
-            + self.instance.claim.mul(challenge_scalar.into_repr())
+        Ok(self.instance.base.mul(response.into_repr())
+            + self.instance.claim.mul(challenge_scalar.into_repr()))
     }
 }
 
@@ -121,7 +121,10 @@ mod tests {
     use blake2::Digest;
     use rand::{thread_rng, Rng};
 
-    use crate::{nizk_proofs::tests::{run_nizk_batched, run_nizk_short}, SigmaError};
+    use crate::{
+        nizk_proofs::tests::{run_nizk_batched, run_nizk_short},
+        SigmaError,
+    };
 
     use super::{SchnorrDLOG, SchnorrInstance};
 
@@ -143,45 +146,97 @@ mod tests {
     fn test_schnorr_accept_valid_batchable() {
         let rng = &mut thread_rng();
         let hasher = blake2::Blake2s::new();
+        let mut challenge_failures = 0;
 
         let (instance, witness, _) = schnorr_setup(rng);
 
-        assert!(run_nizk_batched::<_, SchnorrDLOG<_>, _>(&instance, &witness, hasher, rng).is_ok())
+        let mut test_result =
+            run_nizk_batched::<_, SchnorrDLOG<_>, _>(&instance, &witness, hasher.clone(), rng);
+
+        while test_result == Err(SigmaError::ChallengeConversionFailure) {
+            challenge_failures += 1;
+            test_result =
+                run_nizk_batched::<_, SchnorrDLOG<_>, _>(&instance, &witness, hasher.clone(), rng)
+        }
+
+        println!("Parsing the challenge failed {} times", challenge_failures);
+        assert!(test_result.is_ok())
     }
 
     #[test]
     fn test_schnorr_reject_wrong_batchable() {
         let rng = &mut thread_rng();
         let hasher = blake2::Blake2s::new();
+        let mut challenge_failures = 0;
 
         let (instance, _, wrong_witness) = schnorr_setup(rng);
 
-        assert_eq!(
-            run_nizk_batched::<_, SchnorrDLOG<_>, _>(&instance, &wrong_witness, hasher, rng),
-            Err(SigmaError::VerificationFailed)
-        )
+        let mut test_result = run_nizk_batched::<_, SchnorrDLOG<_>, _>(
+            &instance,
+            &wrong_witness,
+            hasher.clone(),
+            rng,
+        );
+
+        while test_result == Err(SigmaError::ChallengeConversionFailure) {
+            challenge_failures += 1;
+            test_result = run_nizk_batched::<_, SchnorrDLOG<_>, _>(
+                &instance,
+                &wrong_witness,
+                hasher.clone(),
+                rng,
+            )
+        }
+
+        println!("Parsing the challenge failed {} times", challenge_failures);
+
+        assert_eq!(test_result, Err(SigmaError::VerificationFailed))
     }
 
     #[test]
     fn test_schnorr_accept_valid_short() {
         let rng = &mut thread_rng();
         let hasher = blake2::Blake2s::new();
+        let mut challenge_failures = 0;
 
         let (instance, witness, _) = schnorr_setup(rng);
 
-        assert!(run_nizk_short::<_, SchnorrDLOG<_>, _>(&instance, &witness, hasher, rng).is_ok())
+        let mut test_result =
+            run_nizk_short::<_, SchnorrDLOG<_>, _>(&instance, &witness, hasher.clone(), rng);
+
+        while test_result == Err(SigmaError::ChallengeConversionFailure) {
+            challenge_failures += 1;
+            test_result =
+                run_nizk_short::<_, SchnorrDLOG<_>, _>(&instance, &witness, hasher.clone(), rng)
+        }
+
+        println!("Parsing the challenge failed {} times", challenge_failures);
+        assert!(test_result.is_ok())
     }
 
     #[test]
     fn test_schnorr_reject_wrong_short() {
         let rng = &mut thread_rng();
         let hasher = blake2::Blake2s::new();
+        let mut challenge_failures = 0;
 
         let (instance, _, wrong_witness) = schnorr_setup(rng);
 
-        assert_eq!(
-            run_nizk_short::<_, SchnorrDLOG<_>, _>(&instance, &wrong_witness, hasher, rng),
-            Err(SigmaError::VerificationFailed)
-        )
+        let mut test_result =
+            run_nizk_short::<_, SchnorrDLOG<_>, _>(&instance, &wrong_witness, hasher.clone(), rng);
+
+        while test_result == Err(SigmaError::ChallengeConversionFailure) {
+            challenge_failures += 1;
+            test_result = run_nizk_short::<_, SchnorrDLOG<_>, _>(
+                &instance,
+                &wrong_witness,
+                hasher.clone(),
+                rng,
+            )
+        }
+
+        println!("Parsing the challenge failed {} times", challenge_failures);
+
+        assert_eq!(test_result, Err(SigmaError::VerificationFailed))
     }
 }

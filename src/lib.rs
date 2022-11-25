@@ -36,4 +36,7 @@ pub mod protocols;
 pub enum SigmaError {
     /// An error to signify that verification has failed
     VerificationFailed,
+
+    /// An error to signify that a challenge could not be derived from the provided vector of bytes
+    ChallengeConversionFailure,
 }
